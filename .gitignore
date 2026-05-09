@@ -1,0 +1,17 @@
+# Secrets
+.env
+.env.local
+.env.*.local
+
+# Local dependencies and build outputs
+node_modules/
+dist/
+.venv/
+__pycache__/
+*.py[oc]
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
