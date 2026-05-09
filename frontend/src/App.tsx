@@ -1,234 +1,133 @@
-import { useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { AboutSection } from './components/AboutSection'
+import { ConversationSection } from './components/ConversationSection'
+import { FloatingChat } from './components/FloatingChat'
+import { LeftRail } from './components/LeftRail'
+import { TrendingSection } from './components/TrendingSection'
+import { VerticaleSection } from './components/VerticaleSection'
+import { menu, verticaleSections } from './data/content'
+import type { SectionId } from './data/content'
+import { applyTheme, getInitialTheme, persistTheme } from './theme'
+import type { Theme } from './theme'
 
-const BACKEND_URL = (
-  import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8000'
-).replace(/\/$/, '')
+export default function App() {
+  const [active, setActive] = useState<SectionId>('conversation')
+  const [theme, setTheme] = useState<Theme>(() => getInitialTheme())
+  const [chatOpen, setChatOpen] = useState(false)
+  const observerRef = useRef<IntersectionObserver | null>(null)
 
-type Verticale =
-  | 'relocation'
-  | 'life_on_campus'
-  | 'study_abroad'
-  | 'career_readiness'
+  useEffect(() => {
+    applyTheme(theme)
+  }, [theme])
 
-type AskResponse = {
-  answer: string
-  sources: string[]
-  verticale: Verticale
-}
+  function changeTheme(next: Theme) {
+    setTheme(next)
+    persistTheme(next)
+  }
 
-type Message = {
-  id: number
-  role: 'user' | 'assistant'
-  text: string
-  sources?: string[]
-  verticale?: Verticale
-}
+  useEffect(() => {
+    const ids = menu.map((item) => item.id)
+    const elements = ids
+      .map((id) => document.getElementById(id))
+      .filter((element): element is HTMLElement => element !== null)
 
-const verticaleLabels: Record<Verticale, string> = {
-  relocation: 'Life in Milan',
-  life_on_campus: 'Campus life',
-  study_abroad: 'Study abroad',
-  career_readiness: 'Career',
-}
-
-const examples = [
-  'What is the price of an annual ATM transit pass for students under 27 in Milan?',
-  'Provide a structured table of dining areas available on the Bocconi campus.',
-  'How is the MSc graduate Exchange Program selection score weighted?',
-  'What is the maximum amount of the Bocconi Merit Award tuition waiver for MSc students?',
-]
-
-function App() {
-  const [question, setQuestion] = useState('')
-  const [messages, setMessages] = useState<Message[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState('')
-
-  const latestAssistant = useMemo(
-    () => [...messages].reverse().find((message) => message.role === 'assistant'),
-    [messages],
-  )
-
-  async function sendQuestion(nextQuestion: string) {
-    const trimmedQuestion = nextQuestion.trim()
-    if (!trimmedQuestion || isLoading) {
+    if (elements.length === 0) {
       return
     }
 
-    setQuestion('')
-    setError('')
-    setIsLoading(true)
-    setMessages((current) => [
-      ...current,
-      {
-        id: Date.now(),
-        role: 'user',
-        text: trimmedQuestion,
+    const ratios = new Map<string, number>()
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          ratios.set(entry.target.id, entry.intersectionRatio)
+        }
+
+        let bestId: string | null = null
+        let bestRatio = 0
+        for (const [id, ratio] of ratios) {
+          if (ratio > bestRatio) {
+            bestId = id
+            bestRatio = ratio
+          }
+        }
+
+        if (bestId && bestRatio > 0) {
+          setActive(bestId as SectionId)
+        }
       },
-    ])
+      {
+        rootMargin: '-20% 0px -55% 0px',
+        threshold: [0, 0.1, 0.25, 0.5, 0.75, 1],
+      },
+    )
 
-    try {
-      const response = await fetch(`${BACKEND_URL}/ask`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ question: trimmedQuestion }),
-      })
+    observerRef.current = observer
+    for (const element of elements) {
+      observer.observe(element)
+    }
 
-      if (!response.ok) {
-        throw new Error(`Request failed with status ${response.status}`)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== 'Escape') {
+        return
       }
 
-      const data = (await response.json()) as AskResponse
-      setMessages((current) => [
-        ...current,
-        {
-          id: Date.now() + 1,
-          role: 'assistant',
-          text: data.answer,
-          sources: data.sources ?? [],
-          verticale: data.verticale,
-        },
-      ])
-    } catch (caughtError) {
-      const message =
-        caughtError instanceof Error
-          ? caughtError.message
-          : 'The buddy could not be reached.'
-      setQuestion(trimmedQuestion)
-      setError(message)
-    } finally {
-      setIsLoading(false)
+      event.preventDefault()
+      setChatOpen((isOpen) => !isOpen)
     }
-  }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    void sendQuestion(question)
-  }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const onJump = useCallback((id: SectionId) => {
+    const element = document.getElementById(id)
+    if (!element) {
+      return
+    }
+
+    element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    setActive(id)
+  }, [])
+
+  const onPickQuestion = useCallback((question: string) => {
+    const element = document.getElementById('conversation')
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+
+    setActive('conversation')
+    window.dispatchEvent(new CustomEvent<string>('buddy:ask', { detail: question }))
+  }, [])
 
   return (
-    <main className="app-shell">
-      <section className="workspace" aria-label="Bocconi AI Buddy">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">Bocconi AI Buddy</p>
-            <h1>Ask about student life, fast.</h1>
-          </div>
-          <div className="status-pill">4 areas covered</div>
-        </header>
+    <div className="app">
+      <LeftRail
+        active={active}
+        onJump={onJump}
+        theme={theme}
+        onThemeChange={changeTheme}
+      />
 
-        <div className="content-grid">
-          <section className="chat-panel" aria-label="Conversation">
-            <div className="messages">
-              {messages.length === 0 ? (
-                <div className="empty-state">
-                  <p className="eyebrow">Start here</p>
-                  <h2>Choose a question or type your own.</h2>
-                  <div className="example-grid">
-                    {examples.map((example) => (
-                      <button
-                        className="example-button"
-                        key={example}
-                        onClick={() => void sendQuestion(example)}
-                        type="button"
-                      >
-                        {example}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                messages.map((message) => (
-                  <article className={`message ${message.role}`} key={message.id}>
-                    <div className="message-meta">
-                      <span>{message.role === 'user' ? 'You' : 'Buddy'}</span>
-                      {message.verticale ? (
-                        <span className={`verticale ${message.verticale}`}>
-                          {verticaleLabels[message.verticale]}
-                        </span>
-                      ) : null}
-                    </div>
-                    <p>{message.text}</p>
-                    {message.sources?.length ? (
-                      <div className="mobile-sources">
-                        {message.sources.map((source) => (
-                          <span className="source-chip" key={source}>
-                            {source}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-                  </article>
-                ))
-              )}
+      <main className="content">
+        <ConversationSection />
+        <TrendingSection onPickQuestion={onPickQuestion} />
 
-              {isLoading ? (
-                <article className="message assistant pending">
-                  <div className="message-meta">
-                    <span>Buddy</span>
-                  </div>
-                  <p>Reading the Bocconi sources...</p>
-                </article>
-              ) : null}
-            </div>
+        {verticaleSections.map((section) => (
+          <VerticaleSection
+            key={section.id}
+            section={section}
+            onPickExample={onPickQuestion}
+          />
+        ))}
 
-            {error ? (
-              <div className="error-box" role="alert">
-                <span>{error}</span>
-                <button onClick={() => void sendQuestion(question)} type="button">
-                  Try again
-                </button>
-              </div>
-            ) : null}
+        <AboutSection />
+      </main>
 
-            <form className="composer" onSubmit={handleSubmit}>
-              <label className="sr-only" htmlFor="question">
-                Ask the Bocconi AI Buddy
-              </label>
-              <textarea
-                id="question"
-                onChange={(event) => setQuestion(event.target.value)}
-                placeholder="Ask about housing, campus life, study abroad, or career..."
-                rows={3}
-                value={question}
-              />
-              <button disabled={isLoading || !question.trim()} type="submit">
-                Send
-              </button>
-            </form>
-          </section>
-
-          <aside className="context-panel" aria-label="Sources">
-            <p className="eyebrow">Context</p>
-            {latestAssistant?.verticale ? (
-              <span className={`verticale ${latestAssistant.verticale}`}>
-                {verticaleLabels[latestAssistant.verticale]}
-              </span>
-            ) : (
-              <span className="muted">No question yet</span>
-            )}
-
-            <div className="source-list">
-              {latestAssistant?.sources?.length ? (
-                latestAssistant.sources.map((source) => (
-                  <span className="source-chip" key={source}>
-                    {source}
-                  </span>
-                ))
-              ) : (
-                <p className="muted">
-                  Sources from the Bocconi dataset will appear after each answer.
-                </p>
-              )}
-            </div>
-          </aside>
-        </div>
-      </section>
-    </main>
+      <FloatingChat open={chatOpen} onClose={() => setChatOpen(false)} />
+    </div>
   )
 }
-
-export default App

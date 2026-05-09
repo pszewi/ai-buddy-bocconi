@@ -1,0 +1,110 @@
+{
+  "_meta": {
+    "purpose": "Calibration set for the Bocconi AI Buddy. After each retrieval / prompt / model change, run the buddy against these 10 questions and compare answers to the reference. They mirror the 80 hidden eval questions across language, verticale, and category mix.",
+    "scoring": {
+      "correct": 10,
+      "partial": 5,
+      "no_answer": 0,
+      "wrong": -15
+    },
+    "verticali": [
+      "relocation",
+      "life_on_campus",
+      "study_abroad",
+      "career_readiness"
+    ],
+    "categories": [
+      "informative",
+      "computational",
+      "actionable",
+      "trap"
+    ],
+    "honesty_rule": "For trap questions and any question the buddy cannot ground in the bundled data, abstain honestly (no_answer = 0). Fabricating a plausible answer scores -15. Surfacing the false premise explicitly is the highest-scoring trap response.",
+    "language_codes": {
+      "en": "English",
+      "it": "Italian"
+    }
+  },
+  "questions": [
+    {
+      "id": "01",
+      "verticale": "relocation",
+      "category": "informative",
+      "language": "en",
+      "question": "What is the price of an annual ATM transit pass for students under 27 in Milan, and how does it compare with the standard adult annual urban pass?",
+      "reference_answer": "The under-27 annual urban pass on Milan's ATM network is approximately 200 EUR/year. The standard adult annual urban pass is approximately 330 EUR/year. The under-27 pass is therefore about a third cheaper than the standard one."
+    },
+    {
+      "id": "02",
+      "verticale": "relocation",
+      "category": "actionable",
+      "language": "en",
+      "question": "List the steps an international student must follow to register with Italy's National Health Service (SSN) in Milan.",
+      "reference_answer": "1. Obtain a valid permit of stay (permesso di soggiorno) or proof of application. 2. Get the Italian fiscal code (codice fiscale). 3. Choose a general practitioner (medico di base) from the local health authority's list. 4. Visit the local ATS Milano office with passport, permit of stay, fiscal code, proof of residence/Bocconi enrolment, and the annual SSN payment receipt (around 150-200 EUR/year for non-EU students; sometimes free for EU students with EHIC). 5. Receive the tessera sanitaria (health card)."
+    },
+    {
+      "id": "03",
+      "verticale": "relocation",
+      "category": "computational",
+      "language": "it",
+      "question": "Confrontando i bus diretti da Malpensa a Milano Centrale tra i vettori documentati (Autostradale/Malpensa Bus Express, Terravision, Flibco, FlixBus): qual è il prezzo di partenza più basso indicato per ciascun vettore?",
+      "reference_answer": "Il prezzo di partenza più basso documentato per i bus diretti Malpensa - Milano Centrale è, a regime: Autostradale/Malpensa Bus Express ~10 EUR (online); Terravision ~10 EUR (online, talvolta da 8 EUR in promo); Flibco da ~9.99 EUR; FlixBus da ~9.99 EUR (varia per data e fascia oraria). Tutti e quattro i vettori partono da prezzi nel range 8-12 EUR a tratta in advance booking."
+    },
+    {
+      "id": "04",
+      "verticale": "life_on_campus",
+      "category": "informative",
+      "language": "it",
+      "question": "Quale documento devo portare per accedere alla Biblioteca Bocconi, e qual è la capienza massima dell'edificio?",
+      "reference_answer": "Per accedere alla Biblioteca Bocconi è necessario portare un documento di riconoscimento valido: gli studenti Bocconi entrano con il proprio badge studente. La capienza massima dell'edificio è di circa 1.000 persone."
+    },
+    {
+      "id": "05",
+      "verticale": "life_on_campus",
+      "category": "actionable",
+      "language": "en",
+      "question": "Provide a structured table of the dining areas available on the Bocconi campus, indicating the location of each and its meal/opening pattern.",
+      "reference_answer": "A markdown table with rows covering the canteens / cafes / dining points on campus (typically: main canteen at Sarfatti / Roentgen building, cafeterias in Roentgen and Grafton, vending/microwave areas in residences). Each row gives: name, location/building, meal pattern (breakfast / lunch / dinner / continuous), and opening hours where listed. At least 3 distinct real dining areas with correct building or campus location for each."
+    },
+    {
+      "id": "06",
+      "verticale": "study_abroad",
+      "category": "computational",
+      "language": "en",
+      "question": "For the Bocconi MSc graduate Exchange Program selection score, how are academic GPA, credits, and Bachelor degree grade weighted? Show the weights and explain.",
+      "reference_answer": "The Bocconi MSc Exchange Program selection score uses a weighted formula combining: MSc academic GPA (the dominant component, typically ~70%), credits earned at the time of application (~15%), and the Bachelor degree final grade (~15%). GPA is the dominant component; the official figures are specified on the Exchange Program selection page."
+    },
+    {
+      "id": "07",
+      "verticale": "study_abroad",
+      "category": "trap",
+      "language": "en",
+      "question": "What is the application deadline for the Bocconi Double Degree program with MIT (Massachusetts Institute of Technology)?",
+      "reference_answer": "Bocconi does not have a Double Degree program with MIT. The Bocconi Double Degree network includes a number of European and US partners but MIT is not among them. The honest response is to surface the false premise and (optionally) point the user to the official Double Degree partner list. Inventing a deadline is wrong (-15)."
+    },
+    {
+      "id": "08",
+      "verticale": "career_readiness",
+      "category": "informative",
+      "language": "en",
+      "question": "What is the maximum amount of the Bocconi Merit Award tuition waiver for graduate (Master of Science) students, and what is the format of the award (e.g. tuition waiver only, tuition waiver plus stipend, etc.)?",
+      "reference_answer": "At the maximum tier, the Bocconi Merit Award for MSc students covers 100% of tuition fees (approximately 13,000 EUR/year). The format is a tuition waiver, granted at admission for the duration of the MSc subject to academic-performance renewal. The top tier can be paired with a stipend / additional support depending on the specific Merit Award track (financial-aid pages distinguish a 'full tuition waiver' tier from a 'full tuition waiver + stipend' tier)."
+    },
+    {
+      "id": "09",
+      "verticale": "career_readiness",
+      "category": "trap",
+      "language": "en",
+      "question": "What are the placement results published in the 2026 BESS graduate survey?",
+      "reference_answer": "The 2026 BESS graduate survey is not yet published / not available in the agent's data (as of May 2026 the 2026 graduate survey would not yet be out). The honest response is to say the 2026 BESS report cannot be found and optionally point to the most recent available year (e.g. 2024 or 2025) as a fallback."
+    },
+    {
+      "id": "10",
+      "verticale": "life_on_campus",
+      "category": "computational",
+      "language": "en",
+      "question": "How many different paid Bocconi Sport Membership tiers are listed for the 2025/2026 season, and which is the cheapest one available to UB and SDA Bocconi students?",
+      "reference_answer": "The Bocconi Sport Membership 2025/2026 season lists multiple paid tiers (typical structure: Light / Standard / Premium / Top, plus seasonal options - 3 to 6 tiers depending on how seasonal options are counted). The cheapest one available to UB and SDA Bocconi students is the entry-level 'Light' (or equivalent named tier) at the lowest annual price listed."
+    }
+  ]
+}
