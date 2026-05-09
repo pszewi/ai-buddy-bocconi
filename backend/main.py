@@ -499,6 +499,9 @@ Source excerpts:
         )
     except OpenAIError as exc:
         return fallback_answer(f"OpenAI returned an error: {exc.__class__.__name__}.")
+    except Exception:
+        # Keep /ask resilient and return a graceful answer instead of 500.
+        return fallback_answer("An unexpected model error occurred.")
 
     answer = getattr(response, "output_text", "").strip()
     if answer:
@@ -510,6 +513,13 @@ Source excerpts:
 @app.post("/ask", response_model=AskResponse)
 def ask(request: AskRequest) -> AskResponse:
     question = request.question.strip()
+    if not question:
+        return AskResponse(
+            answer="Please provide a non-empty question.",
+            sources=[],
+            verticale="life_on_campus",
+        )
+
     verticale = classify_verticale(question)
     verticale, snippets = retrieve_snippets(question, verticale)
     answer = generate_answer(question, verticale, snippets)

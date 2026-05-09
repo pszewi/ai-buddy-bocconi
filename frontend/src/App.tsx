@@ -88,7 +88,7 @@ function App() {
           id: Date.now() + 1,
           role: 'assistant',
           text: data.answer,
-          sources: data.sources,
+          sources: data.sources ?? [],
           verticale: data.verticale,
         },
       ])
