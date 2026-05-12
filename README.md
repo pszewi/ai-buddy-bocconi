@@ -3,7 +3,7 @@
 
 ## General Description
 
-This repository contains my submission for the Bocconi AI Buddy Challenge organized by Yellow Tech and supported by OpenAI. My submission creates an AI Buddy aimed at first-year university students, that features a RAG, multi-turn conversations, example questions across 4 topics, and a "trending" section with currently most asked questions. The technical implementation focuses on a grounded question-answering backend over the provided Bocconi knowledge base, plus a React frontend for asking questions and reviewing sources.
+This repository contains my submission for the Bocconi AI Buddy Challenge organized by Yellow Tech and supported by OpenAI. My submission creates an AI Buddy aimed at first-year university students, that features a RAG, multi-turn conversations, example questions across 4 topics, and a "trending" section with currently most asked questions. The technical implementation focuses on a grounded question-answering backend over the provided Bocconi knowledge base, plus a React frontend for asking questions and reviewing sources. During the challenge the use of Codex was allowed (and encouraged).
 
 ## Screenshots
 
