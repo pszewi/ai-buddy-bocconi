@@ -1,173 +1,437 @@
-# Bocconi AI Buddy - Starter
+# Bocconi AI Buddy
 
-Starter project for the Bocconi Hackathon. Build an AI agent that helps Bocconi students across 4 areas of their university experience.
 
-> **Read `BRIEF.md` first** for the high-level challenge description (what the AI Buddy is, the 4 verticals, evaluation flow). Then **read `AGENTS.md`** for the full technical specification, schema constraints, and rules.
-> When you're ready to build the UI, read **`DESIGN.md`** for the editorial design system Codex should follow on the frontend.
-> This README is only for setup and quick start.
-> For deployment, read `DEPLOY.md` (or just ask Codex).
-> For a feel of the questions the evaluator will ask, see `SAMPLE_QUESTIONS.md`.
+## General Description
 
-## Prerequisites
+This repository contains my submission for the Bocconi AI Buddy Challenge organized by Yellow Tech and supported by OpenAI. My submission creates an AI Buddy aimed at first-year university students, that features a RAG, multi-turn conversations, example questions across 4 topics, and a "trending" section with currently most asked questions. The technical implementation focuses on a grounded question-answering backend over the provided Bocconi knowledge base, plus a React frontend for asking questions and reviewing sources.
 
-Install on your machine before the event:
+## Screenshots
 
-- **Docker Desktop** ([download](https://www.docker.com/products/docker-desktop)) - on Windows, enable WSL2
-- **Codex Desktop App** ([install](https://developers.openai.com/codex/app)) or Codex CLI
-- **Railway CLI** for deploy: `npm install -g @railway/cli` (or `brew install railway`)
-- **Railway account** (free tier): https://railway.com
+### Main UI features
 
-You'll get an **OpenAI redemption code** from the organizers (visible on the event platform). It is **not** an API key: redeem it on [platform.openai.com](https://platform.openai.com) to unlock the credits, then create your own API key from the dashboard. That generated key (`sk-...`) is what you paste into `.env`.
+![Main conversation view - light theme](screenshots/buddy_main_light.png)
 
-## Quick start (manual)
+![Main conversation view - dark theme](screenshots/buddy_main_dark.png)
+
+### Trending Section
+
+![Trending prompts](screenshots/buddy_trending.png)
+
+### Example Questions and Resources
+
+![Campus section](screenshots/buddy_campus.png)
+
+## Technical Overview
+
+Bocconi AI Buddy is a two-service web app:
+
+- `backend/`: Python 3.13 FastAPI service exposing the evaluator-facing `POST /ask` endpoint.
+- `frontend/`: Vite + React + TypeScript interface for asking questions, displaying source-backed answers, and exploring the four required student-life areas.
+
+The backend answers questions across four fixed verticals:
+
+- `relocation`
+- `life_on_campus`
+- `study_abroad`
+- `career_readiness`
+
+The app uses a retrieval-augmented generation flow over local Markdown data. At request time it retrieves relevant excerpts, optionally rewrites and reranks the retrieval set, generates a grounded answer with OpenAI, and returns source file paths used for the answer.
+
+## Starter vs Submission Work
+
+This project was built on top of a hackathon starter repository. The starter already provided the main service layout, Docker/Railway deployment scaffolding, the large pre-cleaned Bocconi dataset, the frozen `/ask` contract, and an initial backend/frontend implementation.
+
+The submission-specific work in this repository is concentrated around:
+
+- retrieval tuning beyond the starter lexical baseline;
+- a prebuilt FAISS vector index in `backend/data/index/`;
+- hybrid retrieval using OpenAI embeddings, FAISS, BM25, and reciprocal-rank fusion;
+- query rewrite, reranking, secondary retrieval, and evidence checks in `backend/main.py`;
+- manual source curation artifacts under `backend/data/manual_collection/`;
+- two additional indexed high-value fact files:
+  - `backend/data/relocation/atm-urban-travel-pass-fares.md`
+  - `backend/data/career_readiness/bocconi-graduate-merit-awards-ay-2026-27.md`
+- evaluation scripts and saved test runs under `backend/eval/`;
+- a redesigned frontend with vertical sections, local conversation history, recent/trending questions, source display, theme switching, and a floating chat view.
+
+## Architecture
+
+```text
+Browser
+  |
+  | HTTP fetch
+  v
+Frontend: Vite + React
+  |
+  | POST /ask
+  v
+Backend: FastAPI
+  |
+  | classify vertical
+  | rewrite/direct retrieval query
+  | vector search + BM25 search
+  | reciprocal-rank fusion
+  | optional reranking
+  | evidence checks + optional secondary retrieval
+  | answer generation from selected excerpts
+  v
+OpenAI API
+
+Local backend data:
+  backend/data/
+  backend/data/index/faiss.bin
+  backend/data/index/metadata.jsonl
+  backend/data/index/chunks.jsonl
+```
+
+## Backend
+
+Main file: `backend/main.py`
+
+Key endpoints:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | Health check for local and Railway deploys. |
+| `POST` | `/ask` | Main evaluator-facing question-answer endpoint. |
+| `GET` | `/recent-questions` | UI helper endpoint for recently submitted questions. |
+
+### `/ask` Contract
+
+Request:
+
+```json
+{
+  "question": "What is the annual ATM pass price for students under 27?"
+}
+```
+
+The frontend may also send an optional `history` array for local follow-up context, but `question` is the only required field.
+
+Response:
+
+```json
+{
+  "answer": "Natural-language answer grounded in the retrieved excerpts.",
+  "sources": ["relocation/atm-urban-travel-pass-fares.md"],
+  "verticale": "relocation"
+}
+```
+
+The response shape intentionally stays compatible with the hackathon evaluator: `answer` is a string, `sources` is a list of strings, and `verticale` is one of the four fixed vertical identifiers.
+
+### Retrieval Pipeline
+
+The runtime retrieval flow is implemented directly in `backend/main.py`:
+
+1. Classify the question into one or more preferred verticals using weighted keywords.
+2. Build retrieval queries using direct special-case expansions or a short OpenAI rewrite call.
+3. Embed the query with `text-embedding-3-large`.
+4. Search the prebuilt FAISS index at `backend/data/index/faiss.bin`.
+5. Run BM25 lexical search with `rank-bm25`.
+6. Merge vector and lexical rankings with reciprocal-rank fusion.
+7. Rerank a bounded candidate window with a small OpenAI model when enabled.
+8. Run evidence checks for specific names, acronyms, years, prices, and co-occurring terms.
+9. Run targeted secondary retrieval if the first pass is thin or missing required evidence.
+10. Generate the final answer from selected excerpts only.
+
+The backend logs request diagnostics as JSON, including selected chunks, source paths, timings, model configuration, and whether the answer abstained.
+
+### Runtime Feature Flags
+
+These environment variables can disable parts of the retrieval stack without code changes:
 
 ```bash
-# 1. Set up your API key (the sk-... you generated after redeeming the code)
+BUDDY_HYBRID_ENABLED=1
+BUDDY_RERANK_ENABLED=1
+BUDDY_REWRITE_ENABLED=1
+```
+
+Retrieval sizes are also configurable:
+
+```bash
+BUDDY_VECTOR_TOP_K=24
+BUDDY_HYBRID_TOP_K=24
+BUDDY_SECONDARY_TOP_K=24
+BUDDY_RERANK_CANDIDATE_K=20
+BUDDY_FINAL_SNIPPETS=6
+```
+
+## Knowledge Base and Index
+
+The starter dataset lives in `backend/data/` and is organized by vertical:
+
+```text
+backend/data/
+  relocation/
+  life_on_campus/
+  study_abroad/
+  career_readiness/
+  manifest.json
+  extra-sources.md
+  index/
+```
+
+The committed vector index artifacts are:
+
+```text
+backend/data/index/chunks.jsonl
+backend/data/index/metadata.jsonl
+backend/data/index/faiss.bin
+```
+
+The index is intentionally built before deployment and shipped with the backend image. The running service should not re-embed the full corpus at startup or on first request.
+
+To rebuild the index:
+
+```bash
+cd backend
+uv run python scripts/build_index.py
+```
+
+This command requires `OPENAI_API_KEY` because it calls the OpenAI embeddings API. For chunk generation without embedding:
+
+```bash
+cd backend
+uv run python scripts/build_index.py --chunk-only
+```
+
+## Frontend
+
+Main files:
+
+```text
+frontend/src/App.tsx
+frontend/src/api.ts
+frontend/src/components/
+frontend/src/data/content.ts
+frontend/src/index.css
+frontend/src/theme.ts
+```
+
+Frontend features:
+
+- typed API client for `/ask` and `/recent-questions`;
+- main conversation panel with local history passed to the backend;
+- vertical sections with example prompts;
+- source list display for each answer;
+- recent/trending question section;
+- floating chat modal opened with `Esc`;
+- keyboard shortcut `/` to focus the main question box;
+- light/dark theme handling through CSS variables and local storage.
+
+The frontend reads the backend base URL from:
+
+```bash
+VITE_BACKEND_URL=http://localhost:8000
+```
+
+If the variable is not set, it defaults to `http://localhost:8000`.
+
+## Tech Stack
+
+Backend:
+
+- Python 3.13
+- FastAPI
+- Pydantic
+- OpenAI Python SDK
+- FAISS CPU
+- NumPy
+- rank-bm25
+- uv
+
+Frontend:
+
+- Node 22
+- React 19
+- TypeScript
+- Vite
+- ESLint
+
+Infrastructure:
+
+- Docker Compose for local development
+- Railway-ready backend and frontend service configs
+- Separate production builds for backend and frontend
+
+## Environment Variables
+
+Create a local `.env` file from the example:
+
+```bash
 cp .env.example .env
-# edit .env and paste your OPENAI_API_KEY
+```
 
-# 2. Start dev containers
+Required for meaningful answers:
+
+```bash
+OPENAI_API_KEY=sk-...
+```
+
+Common model and timeout settings:
+
+```bash
+OPENAI_MODEL=gpt-5.4
+OPENAI_FAST_MODEL=gpt-5.4-mini
+OPENAI_FALLBACK_MODEL=gpt-5.4-mini
+OPENAI_TIMEOUT_SECONDS=20
+FRONTEND_URL=http://localhost:5173
+```
+
+Do not commit `.env` or any real API key.
+
+## Local Development
+
+Start both services with Docker Compose:
+
+```bash
 docker compose -f docker-compose.dev.yml up -d
-
-# 3. Verify
-#    Backend at http://localhost:8000/docs
-#    Frontend at http://localhost:5173
 ```
 
-## Quick start (with Codex - recommended)
+Local URLs:
 
-Open this folder in Codex Desktop App, select **Local** mode, and just ask:
+- Backend docs: `http://localhost:8000/docs`
+- Backend health: `http://localhost:8000/health`
+- Frontend: `http://localhost:5173`
 
-> "Start the dev environment"
+Smoke-test `/ask`:
 
-Codex runs `docker compose up -d` for you, waits for the containers to be healthy, and verifies the endpoints. From there, every command in this README can be triggered by just asking Codex.
-
-## How to work with Codex on this project
-
-This project is set up to be driven by Codex (Desktop App or CLI). The flow:
-
-1. Open the folder in Codex Desktop App, select Local mode
-2. Codex automatically reads `AGENTS.md` as project context
-3. Use the **kickoff prompt** below for your first turn
-4. Iterate: Codex edits files, you accept diffs, dev containers hot-reload
-
-### Kickoff prompt (paste this as your first message to Codex)
-
-```
-Read AGENTS.md fully and confirm the constraints (frozen /ask schema,
-30s latency cap, 4 verticals, English code, mostly-English evaluation).
-
-Then implement the POST /ask endpoint in backend/main.py:
-- Build a RAG pipeline over data/relocation/, data/life_on_campus/,
-  data/study_abroad/, data/career_readiness/ (mixed IT+EN content -
-  use a multilingual embedding model like text-embedding-3-large for
-  good cross-lingual retrieval)
-- Pick one vector store from the 3 options in AGENTS.md (FAISS, Chroma,
-  or SQLite+sqlite-vec) and uncomment its dependencies in
-  backend/pyproject.toml
-- Detect the verticale from the question
-- Return {answer, sources, verticale} matching the frozen schema
-- Cover all 4 verticals: relocation, life_on_campus, study_abroad,
-  career_readiness
-
-After backend works end-to-end on one verticale, extend to all 4.
-Then build a minimal React UI in frontend/src/ that calls /ask and
-displays the answer with sources.
-
-Smoke-test:
-  curl -X POST http://localhost:8000/ask \
-    -H 'Content-Type: application/json' \
-    -d '{"question":"What MSc Finance courses are available?"}'
+```bash
+curl -X POST http://localhost:8000/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"What is the annual ATM pass price for students under 27?"}'
 ```
 
-## Common things to ask Codex
+Stop the dev environment:
 
-You don't need to remember docker / curl / railway commands. Just ask Codex:
-
-- *"Start the dev environment"* - brings up the containers
-- *"Show me the backend logs"* - tails Docker logs
-- *"Stop the containers"* - shuts everything down
-- *"Restart the dev environment"* - useful when hot reload misbehaves
-- *"Test the /ask endpoint with a sample question"* - smoke test
-- *"Build the production image"* - runs `docker build -f Dockerfile.prod`
-- *"Run the production image locally"* - sanity check before deploying
-- *"Deploy to Railway"* - see `DEPLOY.md`. The first time, Codex will guide you through `railway login` + `railway init`
-- *"Show Railway logs"* - tail logs of the deployed service
-- *"Get the public Railway URL"* - generate or fetch the deployment URL
-
-You can also run any of these manually in a terminal - Codex just makes it easier.
-
-## Project layout
-
+```bash
+docker compose -f docker-compose.dev.yml down
 ```
+
+## Running Without Docker
+
+Backend:
+
+```bash
+cd backend
+uv sync
+uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+## Evaluation and Testing
+
+The repository includes scripts for exercising `/ask` against fixed question sets.
+
+Run the bundled sample questions:
+
+```bash
+cd backend
+uv run python scripts/run_samples.py --url http://localhost:8000/ask
+```
+
+Run a JSONL question set:
+
+```bash
+cd backend
+uv run python scripts/run_questions.py \
+  --questions eval/extended_questions.jsonl \
+  --url http://localhost:8000/ask \
+  --output eval/results/local-results.jsonl
+```
+
+Saved evaluation artifacts are kept under `backend/eval/results/` and `backend/sample-results.*`. These files document the tuning process and regression checks used during the submission.
+
+## Deployment
+
+The project is configured for two Railway services:
+
+- backend service from `backend/`
+- frontend service from `frontend/`
+
+Backend deployment uses:
+
+```text
+backend/Dockerfile
+backend/railway.json
+```
+
+Frontend deployment uses:
+
+```text
+frontend/railway.json
+```
+
+Required production variables:
+
+Backend service:
+
+```bash
+OPENAI_API_KEY=sk-...
+FRONTEND_URL=https://<frontend-public-url>
+```
+
+Frontend service:
+
+```bash
+VITE_BACKEND_URL=https://<backend-public-url>
+```
+
+The hackathon evaluator calls the backend public URL at `POST /ask`.
+
+## Repository Layout
+
+```text
 .
-├── BRIEF.md                   # Challenge brief - read this first
-├── AGENTS.md                  # Full technical spec - read this second
-├── DESIGN.md                  # UI design system - read before touching frontend/
-├── README.md                  # This file
-├── DEPLOY.md                  # Step-by-step Railway deploy (two services) + Codex prompt
-├── SAMPLE_QUESTIONS.md        # 10 sample evaluation questions (representative of the 80 used at scoring)
-├── docker-compose.dev.yml     # Dev environment (backend + frontend, hot reload)
-├── Dockerfile.backend         # Dev Dockerfile for backend
-├── Dockerfile.frontend        # Dev Dockerfile for frontend
-├── .env.example               # Template for OPENAI_API_KEY
-├── .gitignore
-├── backend/                   # Backend service (Python FastAPI)
-│   ├── Dockerfile             # Production Dockerfile (deployed by Railway)
-│   ├── railway.json           # Railway deploy config for the backend service
-│   ├── pyproject.toml         # Essentials installed; RAG libs commented
-│   ├── main.py                # FastAPI app + /ask endpoint (returns 501 until you implement)
-│   └── data/                  # Pre-cleaned RAG knowledge base (bundled with backend)
-│       ├── README.md          # Describes the dataset structure
-│       ├── manifest.json      # Index of all data files with metadata
-│       ├── extra-sources.md   # Curated additional public sources (some bundled, some pointers only)
-│       ├── relocation/        # ~119 files - housing, visa, transport, banks, healthcare
-│       ├── life_on_campus/    # ~473 files - associations, services, sport, dining, well-being
-│       ├── study_abroad/      # ~132 files - exchange, partners, summer schools, Farnesina country advisories
-│       └── career_readiness/  # ~893 files - programs, career, faculty, research, alumni, AlmaLaurea
-└── frontend/                  # Frontend service (Vite + React)
-    ├── railway.json           # Railway deploy config for the frontend service
-    ├── package.json
-    └── src/                   # Placeholder UI - you build this
+  backend/
+    main.py                         # FastAPI app and retrieval pipeline
+    scripts/
+      build_index.py                # Builds chunks and FAISS index
+      run_samples.py                # Runs built-in smoke questions
+      run_questions.py              # Runs JSONL eval sets
+      scrape_bocconi_public.py      # Manual curation helper
+    data/
+      index/                        # Committed FAISS/chunk artifacts
+      relocation/
+      life_on_campus/
+      study_abroad/
+      career_readiness/
+      manual_collection/            # Manual curation notes/artifacts
+    eval/                           # Evaluation question sets and results
+    Dockerfile
+    railway.json
+    pyproject.toml
+  frontend/
+    src/
+      components/
+      data/
+      api.ts
+      App.tsx
+      index.css
+      theme.ts
+    package.json
+    railway.json
+  docker-compose.dev.yml
+  Dockerfile.backend
+  Dockerfile.frontend
+  README_challenge.md               # Original starter README preserved separately
+  DEPLOY.md
+  DESIGN.md
+  AGENTS.md
 ```
 
-Total dataset: **~1,617 files, ~2.88M tokens**, located at `backend/data/`.
+## Notes and Limitations
 
-## Two services on Railway
-
-For the production deploy, your app runs as **two Railway services** in the same project:
-
-- **backend** (Python FastAPI) - exposes `/ask` and `/health`. **This is the URL the evaluator hits.**
-- **frontend** (Vite static site) - calls the backend via `VITE_BACKEND_URL`.
-
-This makes the build robust (no fragile multi-stage), keeps the standard production split, and lets you redeploy each independently. See `DEPLOY.md` for step-by-step instructions, or just ask Codex to handle it.
-
-## Constraints recap (from `AGENTS.md`)
-
-- `/ask` request: `{"question": str}`. Response: `{"answer": str, "sources": list[str], "verticale": str}`. Schema is frozen.
-- Response time: `≤ 30s` per request. Over = `wrong` (-15) for that question (system error counts as a wrong answer).
-- All 4 verticals must be covered.
-- Evaluation questions are mostly in English; knowledge base is mixed IT+EN. A multilingual embedding model is recommended for cross-lingual retrieval.
-- Code, comments and identifiers in English. Sources must reference real paths in `data/`.
-- Never commit `.env`. Never hardcode API keys.
-
-## Submission
-
-You'll deliver:
-
-- The **backend public URL** (Railway). This is where the evaluator hits `/ask` with ~80 questions.
-- The **frontend public URL** (Railway). What humans see during Level 2 evaluation.
-- The full project zipped (code + .env.example - **no `.env` with the real key**)
-- A short text description of your product (~200 words)
-
-The backend URL is the most important: if `/ask` is not reachable, every question scores `wrong` (-15) and your Level 1 total goes to the floor (-1200). See `DEPLOY.md` for step-by-step Railway instructions, or just ask Codex to deploy it for you.
-
-Details and submission form are on the event platform.
-
-## Troubleshooting
-
-- **Containers don't start**: check Docker Desktop is running, `docker ps` should work
-- **Hot reload broken**: ask Codex to restart the dev environment
-- **`/ask` returns 501**: that's expected - it means you haven't implemented the endpoint yet
-- **OpenAI 401**: check `OPENAI_API_KEY` in `.env` and that the container picked it up. Ask Codex to verify with `docker compose exec backend env | grep OPENAI`
-- **Deploy issue at the event**: a Yellow Tech mentor team is available in the room to help. **Do your first deploy around hour 3** (not at the last minute) so any issues surface while there is still time to fix them.
+- The answer quality depends on the local dataset snapshot and the committed index. New source files should be indexed before deployment.
+- The backend is designed for single-request answers under the hackathon latency constraint, not long-running agent workflows.
+- Conversation memory is local to the browser and sent as optional context; it is not persisted in a database.
+- `/recent-questions` is an in-memory UI convenience endpoint and resets when the backend restarts.
+- Some evaluation artifacts and submission packaging files are retained for transparency, not required for normal runtime.
